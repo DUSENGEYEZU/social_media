@@ -30,7 +30,12 @@ def test_openapi_spec_documents_health_endpoint(spec):
 
 @pytest.mark.parametrize(
     "path",
-    ["/api/v1/videos/youtube", "/api/v1/videos/instagram", "/api/v1/videos/tiktok"],
+    [
+        "/api/v1/videos/youtube",
+        "/api/v1/videos/instagram",
+        "/api/v1/videos/tiktok",
+        "/api/v1/videos/facebook",
+    ],
 )
 def test_openapi_spec_documents_each_download_endpoint(spec, path):
     operation = spec["paths"][path]["post"]

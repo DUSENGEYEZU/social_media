@@ -47,6 +47,10 @@ def process_video(
     except TranscriptionError as exc:
         warnings.append(f"Transcription failed: {exc}")
         return result
+    if not transcript.text:
+        # Music-only or silent clip: no segments, and the language guess is meaningless.
+        warnings.append("No speech detected in the video.")
+        return result
     result["transcript_language"] = transcript.language
     result["transcript_text"] = transcript.text
 

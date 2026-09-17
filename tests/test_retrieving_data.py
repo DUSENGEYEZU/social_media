@@ -7,6 +7,7 @@ from app.services import retrieving_data
 from app.services.retrieving_data import (
     DownloadVideo,
     VideoDownloadError,
+    is_facebook_url,
     is_instagram_url,
     is_tiktok_url,
     is_youtube_url,
@@ -129,6 +130,10 @@ INSTAGRAM_REEL = (
     "?utm_source=ig_web_copy_link&stkn=NTc4MTIwNjQ2YQ=="
 )
 TIKTOK_VIDEO = "https://www.tiktok.com/@tiktok/video/7106594312292453675"
+FACEBOOK_VIDEO = (
+    "https://www.facebook.com/bbcworldservice/videos/"
+    "watch-nasa-releases-picture-of-rainbow-in-space/1916132775905757/"
+)
 
 
 @pytest.mark.parametrize(
@@ -196,11 +201,52 @@ def test_is_tiktok_url_rejects_profiles_tags_and_other_sites(url):
     assert is_tiktok_url(url) is False
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        FACEBOOK_VIDEO,
+        "https://www.facebook.com/NASA/videos/1234567890123/",
+        "https://www.facebook.com/watch/?v=1234567890123",
+        "https://www.facebook.com/watch?v=1234567890123&ref=sharing",
+        "https://www.facebook.com/reel/1234567890123",
+        "https://www.facebook.com/NASA/reels/1234567890123/",
+        "https://fb.watch/abcDEF123/",
+        "https://www.facebook.com/share/v/AbCdEf12345/",
+        "https://www.facebook.com/share/r/AbCdEf12345/",
+        "https://m.facebook.com/video.php?v=1234567890123",
+        "https://web.facebook.com/watch/?v=1234567890123",
+    ],
+)
+def test_is_facebook_url_accepts_video_reel_watch_and_share_links(url):
+    assert is_facebook_url(url) is True
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.facebook.com/NASA/",
+        "https://www.facebook.com/NASA/videos",
+        "https://www.facebook.com/watch/",
+        "https://www.facebook.com/",
+        "https://www.facebook.com/groups/1234567890/",
+        "https://fb.watch/",
+        "https://www.instagram.com/reel/Dcik7_Zy3Ph/",
+        "https://facebook.com.evil.example/watch/?v=1",
+        "ftp://www.facebook.com/watch/?v=1",
+        "not a url",
+        "",
+    ],
+)
+def test_is_facebook_url_rejects_pages_groups_and_other_sites(url):
+    assert is_facebook_url(url) is False
+
+
 PLATFORMS = [
     pytest.param(
         "instagram", "Instagram", INSTAGRAM_REEL, TIKTOK_VIDEO, id="instagram"
     ),
     pytest.param("tiktok", "TikTok", TIKTOK_VIDEO, INSTAGRAM_REEL, id="tiktok"),
+    pytest.param("facebook", "Facebook", FACEBOOK_VIDEO, INSTAGRAM_REEL, id="facebook"),
 ]
 
 
