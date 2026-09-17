@@ -189,3 +189,56 @@ def download_tiktok_video():
               $ref: '#/components/schemas/Error'
     """
     return _download_from("tiktok")
+
+
+@api_bp.post("/videos/facebook")
+def download_facebook_video():
+    """Download a Facebook video.
+    ---
+    tags:
+      - Videos
+    description: >
+      Downloads a public Facebook video or reel as an mp4 into the server's
+      download folder and returns its metadata, transcript, translation and
+      topic. Accepts page video URLs, /watch/?v= links, reels, and the share
+      links Facebook produces (facebook.com/share/v/..., fb.watch/...). Page,
+      group and profile URLs are rejected. Videos that require a Facebook login
+      are not supported. The request blocks until the download finishes.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - url
+            properties:
+              url:
+                type: string
+                format: uri
+                description: >
+                  Full URL of a Facebook video, for example
+                  facebook.com/<page>/videos/<id>/, facebook.com/watch/?v=<id>,
+                  facebook.com/reel/<id> or an fb.watch short link.
+                example: https://www.facebook.com/watch/?v=1234567890123
+    responses:
+      201:
+        description: Video downloaded and saved; transcript, translation and topic included when available.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VideoMetadata'
+      400:
+        description: Body is not JSON, `url` is missing, or the URL is not a single Facebook video.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      502:
+        description: Facebook or yt-dlp failed, for example a login-only or removed video.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+    """
+    return _download_from("facebook")

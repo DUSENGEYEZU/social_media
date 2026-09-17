@@ -3,7 +3,7 @@
 import re
 from collections.abc import Callable
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import yt_dlp
 
@@ -27,6 +27,26 @@ TIKTOK_SHORT_HOSTS = frozenset({"vm.tiktok.com", "vt.tiktok.com"})
 _TIKTOK_VIDEO_PATH = re.compile(
     r"^/(@[^/]+/video/\d+|v/\d+(\.html)?|t/[A-Za-z0-9]+)/?$"
 )
+
+FACEBOOK_HOSTS = frozenset(
+    {
+        "facebook.com",
+        "www.facebook.com",
+        "m.facebook.com",
+        "web.facebook.com",
+        "fb.com",
+        "www.fb.com",
+    }
+)
+# Short links from the share button: https://fb.watch/<code>/
+FACEBOOK_SHORT_HOSTS = frozenset({"fb.watch"})
+# Single-video pages: /<page>/videos/[<slug>/]<id>, /<page>/reels/<id>, /reel/<id>,
+# /share/v/<code> and /share/r/<code>. Pages, groups and the videos tab are not.
+_FACEBOOK_VIDEO_PATH = re.compile(
+    r"^/(reel/\d+|share/[vr]/[A-Za-z0-9_-]+|[^/]+/videos/(?:[^/]+/)?\d+|[^/]+/reels/\d+)/?$"
+)
+# /watch/?v=<id> and /video.php?v=<id> carry the id in the query string.
+_FACEBOOK_WATCH_PATHS = frozenset({"/watch", "/watch/", "/video.php"})
 
 _HTTP_SCHEMES = frozenset({"http", "https"})
 
@@ -62,6 +82,21 @@ def is_tiktok_url(url: str) -> bool:
     return host in TIKTOK_HOSTS and _TIKTOK_VIDEO_PATH.match(parsed.path) is not None
 
 
+def is_facebook_url(url: str) -> bool:
+    """Return True when the URL points at a single Facebook video, reel or share link."""
+    parsed = urlparse(url)
+    if parsed.scheme not in _HTTP_SCHEMES:
+        return False
+    host = parsed.netloc.lower()
+    if host in FACEBOOK_SHORT_HOSTS:
+        return parsed.path.strip("/") != ""
+    if host not in FACEBOOK_HOSTS:
+        return False
+    if parsed.path in _FACEBOOK_WATCH_PATHS:
+        return bool(parse_qs(parsed.query).get("v", [""])[0])
+    return _FACEBOOK_VIDEO_PATH.match(parsed.path) is not None
+
+
 class DownloadVideo:
     """Download videos from social media platforms into a local folder.
 
@@ -83,6 +118,10 @@ class DownloadVideo:
     def tiktok(self, url: str) -> dict:
         """Download a TikTok video as mp4 and return its metadata."""
         return self._download(url, is_tiktok_url, "TikTok")
+
+    def facebook(self, url: str) -> dict:
+        """Download a public Facebook video or reel as mp4 and return its metadata."""
+        return self._download(url, is_facebook_url, "Facebook")
 
     def _download(
         self, url: str, is_valid: Callable[[str], bool], platform: str

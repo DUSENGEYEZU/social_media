@@ -220,3 +220,23 @@ def test_summary_failure_keeps_everything_else_and_warns():
     assert result["translation_text"] == "Salut. Au revoir."
     assert result["topic"] is None
     assert result["warnings"] == ["Summary failed: no weights"]
+
+
+def test_video_without_speech_reports_a_warning_and_skips_text_steps():
+    # Music-only clips: Whisper returns no segments and a meaningless language guess.
+    translator = FakeTranslator()
+    summarizer = FakeSummarizer()
+
+    result = run(
+        transcriber=FakeTranscriber(Transcript("en", ["  ", ""])),
+        translator=translator,
+        summarizer=summarizer,
+    )
+
+    assert result == {
+        **METADATA,
+        **EMPTY_TEXT_FIELDS,
+        "warnings": ["No speech detected in the video."],
+    }
+    assert translator.calls == []
+    assert summarizer.texts == []

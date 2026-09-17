@@ -51,6 +51,9 @@ class FakeDownloader:
     def tiktok(self, url):
         return self._record(url)
 
+    def facebook(self, url):
+        return self._record(url)
+
 
 @pytest.fixture
 def fake_downloader(monkeypatch):
@@ -113,12 +116,14 @@ def test_post_youtube_when_download_fails_returns_502(client, fake_downloader):
 
 INSTAGRAM_REEL = "https://www.instagram.com/reel/Dcik7_Zy3Ph/"
 TIKTOK_VIDEO = "https://www.tiktok.com/@tiktok/video/7106594312292453675"
+FACEBOOK_VIDEO = "https://www.facebook.com/watch/?v=1234567890123"
 
 PLATFORM_ROUTES = [
     pytest.param(
         "/api/v1/videos/instagram", "Instagram", INSTAGRAM_REEL, id="instagram"
     ),
     pytest.param("/api/v1/videos/tiktok", "TikTok", TIKTOK_VIDEO, id="tiktok"),
+    pytest.param("/api/v1/videos/facebook", "Facebook", FACEBOOK_VIDEO, id="facebook"),
 ]
 
 

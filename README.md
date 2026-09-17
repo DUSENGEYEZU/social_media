@@ -35,9 +35,9 @@ social_media/
 │   ├── api/                # REST API blueprint, mounted at /api/v1
 │   │   ├── __init__.py     # Defines the blueprint and imports route modules
 │   │   ├── health.py       # GET /api/v1/health
-│   │   └── videos.py       # POST /api/v1/videos/{youtube,instagram,tiktok}
+│   │   └── videos.py       # POST /api/v1/videos/{youtube,instagram,tiktok,facebook}
 │   └── services/           # Business logic, independent of HTTP
-│       ├── retrieving_data.py  # DownloadVideo class: youtube(), instagram(), tiktok()
+│       ├── retrieving_data.py  # DownloadVideo class: youtube(), instagram(), tiktok(), facebook()
 │       ├── transcription.py    # Transcriber: speech to text with faster-whisper
 │       ├── translation.py      # Translator: English <-> French with MarianMT
 │       ├── summarization.py    # Summarizer: short English topic summary with BART
@@ -69,7 +69,7 @@ How the pieces fit together:
 - `app/api/__init__.py` creates the `api_bp` blueprint. Every route module is imported here so its routes are attached to the blueprint.
 - Each file in `app/api/` groups the routes for one resource. Add a new module there and import it in `app/api/__init__.py` to expose a new set of endpoints.
 - `app/docs.py` configures flasgger. Each route documents itself with a YAML block in its docstring, after a `---` line. flasgger collects those blocks into one OpenAPI 3 spec and serves Swagger UI on top of it.
-- `app/services/` holds the logic that does the real work, with no Flask imports. Routes stay thin: they validate the request, call a service, and translate the result or error into an HTTP response. `retrieving_data.py` contains the `DownloadVideo` class with one method per platform: `youtube(url)`, `instagram(url)` and `tiktok(url)`. Each validates the URL for its platform and hands off to one shared yt-dlp download, so adding a platform means adding a URL check and a two-line method.
+- `app/services/` holds the logic that does the real work, with no Flask imports. Routes stay thin: they validate the request, call a service, and translate the result or error into an HTTP response. `retrieving_data.py` contains the `DownloadVideo` class with one method per platform: `youtube(url)`, `instagram(url)`, `tiktok(url)` and `facebook(url)`. Each validates the URL for its platform and hands off to one shared yt-dlp download, so adding a platform means adding a URL check and a two-line method.
 
 Downloaded videos are saved in the `downloaded_videos` folder at the root of the repository. It is created on the first download and listed in `.gitignore`, so videos are never committed or pushed.
 
@@ -180,6 +180,7 @@ All endpoints are prefixed with `/api/v1`.
 | POST | `/videos/youtube` | Download a YouTube video into the download folder. |
 | POST | `/videos/instagram` | Download a public Instagram post, reel or IGTV video. |
 | POST | `/videos/tiktok` | Download a TikTok video, including app short links. |
+| POST | `/videos/facebook` | Download a public Facebook video or reel, including share links. |
 
 ### POST /videos/youtube
 
@@ -246,6 +247,21 @@ Profile and hashtag pages are rejected with 400.
 
 TikTok serves a bot-check page to plain HTTP clients. yt-dlp gets past it by impersonating a real browser, which needs its optional `curl-cffi` dependency. That dependency is declared in `pyproject.toml` as `yt-dlp[curl-cffi]`, so `uv sync` installs it and no extra step is needed. If TikTok downloads ever fail with "Unexpected response from webpage request", run `uv run yt-dlp --list-impersonate-targets` and confirm at least one target is listed.
 
+### POST /videos/facebook
+
+Same request body, responses and error codes as the YouTube endpoint. Accepts public page videos, reels, watch links and the share links Facebook produces:
+
+```
+https://www.facebook.com/<page>/videos/<id>/
+https://www.facebook.com/<page>/videos/<slug>/<id>/
+https://www.facebook.com/watch/?v=<id>
+https://www.facebook.com/reel/<id>
+https://www.facebook.com/share/v/<code>/
+https://fb.watch/<code>/
+```
+
+Page, group and profile URLs are rejected with 400. Facebook hides many videos behind a login. Those return 502 with Facebook's message, because the API downloads without a Facebook account. Public page videos, such as those from news organisations, work.
+
 ### File names
 
 Files are named `<title> [<id>].mp4`. The title is cut at 80 characters because Instagram and TikTok use the post caption as the title, and captions can run to hundreds of characters. The id keeps every file unique.
@@ -286,6 +302,8 @@ The response gains six fields:
 | `warnings` | Non-fatal problems. Empty when everything worked. |
 
 A successful download is never turned into an error by these steps. If transcription, translation or summarisation fails, or the language is not English or French, the response is still `201` with the video metadata, the affected fields set to `null`, and the reason listed in `warnings`.
+
+Videos with no speech, for example music with on-screen captions, return all five text fields as `null` and the warning `No speech detected in the video.`
 
 ### First run and timing
 
