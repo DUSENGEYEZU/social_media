@@ -15,6 +15,7 @@ def app(download_dir):
         TESTING = True
         SECRET_KEY = "test-secret"
         DOWNLOAD_DIR = str(download_dir)
+        TRANSCRIPTION_ENABLED = False
 
     return create_app(TestConfig)
 

@@ -4,6 +4,8 @@ import pytest
 
 from app.api import videos
 from app.services.retrieving_data import VideoDownloadError
+from app.services.transcription import Transcript
+from app.services.translation import Translation
 
 METADATA = {
     "title": "My Video",
@@ -11,6 +13,16 @@ METADATA = {
     "file_path": "/downloads/My Video [abc123].mp4",
     "duration_seconds": 42,
     "file_size_bytes": 1024,
+}
+# What the API returns when TRANSCRIPTION_ENABLED is false (the test default).
+DISABLED_RESPONSE = {
+    **METADATA,
+    "transcript_language": None,
+    "transcript_text": None,
+    "translation_language": None,
+    "translation_text": None,
+    "topic": None,
+    "warnings": ["Transcription is disabled."],
 }
 
 
@@ -24,11 +36,20 @@ class FakeDownloader:
     def __init__(self, download_dir):
         FakeDownloader.created_with = download_dir
 
-    def youtube(self, url):
+    def _record(self, url):
         FakeDownloader.calls.append(url)
         if FakeDownloader.error is not None:
             raise FakeDownloader.error
         return METADATA
+
+    def youtube(self, url):
+        return self._record(url)
+
+    def instagram(self, url):
+        return self._record(url)
+
+    def tiktok(self, url):
+        return self._record(url)
 
 
 @pytest.fixture
@@ -48,7 +69,7 @@ def test_post_youtube_downloads_and_returns_metadata(
     )
 
     assert response.status_code == 201
-    assert response.get_json() == METADATA
+    assert response.get_json() == DISABLED_RESPONSE
     assert fake_downloader.calls == ["https://youtu.be/abc123"]
     assert fake_downloader.created_with == str(download_dir)
 
@@ -88,3 +109,105 @@ def test_post_youtube_when_download_fails_returns_502(client, fake_downloader):
 
     assert response.status_code == 502
     assert "Video unavailable" in response.get_json()["error"]
+
+
+INSTAGRAM_REEL = "https://www.instagram.com/reel/Dcik7_Zy3Ph/"
+TIKTOK_VIDEO = "https://www.tiktok.com/@tiktok/video/7106594312292453675"
+
+PLATFORM_ROUTES = [
+    pytest.param(
+        "/api/v1/videos/instagram", "Instagram", INSTAGRAM_REEL, id="instagram"
+    ),
+    pytest.param("/api/v1/videos/tiktok", "TikTok", TIKTOK_VIDEO, id="tiktok"),
+]
+
+
+@pytest.mark.parametrize("route, platform, good_url", PLATFORM_ROUTES)
+def test_post_platform_downloads_and_returns_metadata(
+    client, download_dir, fake_downloader, route, platform, good_url
+):
+    response = client.post(route, json={"url": good_url})
+
+    assert response.status_code == 201
+    assert response.get_json() == DISABLED_RESPONSE
+    assert fake_downloader.calls == [good_url]
+    assert fake_downloader.created_with == str(download_dir)
+
+
+@pytest.mark.parametrize("route, platform, good_url", PLATFORM_ROUTES)
+def test_post_platform_without_url_returns_400(
+    client, fake_downloader, route, platform, good_url
+):
+    response = client.post(route, json={})
+
+    assert response.status_code == 400
+    assert "url" in response.get_json()["error"]
+    assert fake_downloader.calls == []
+
+
+@pytest.mark.parametrize("route, platform, good_url", PLATFORM_ROUTES)
+def test_post_platform_with_url_from_another_site_returns_400(
+    client, download_dir, route, platform, good_url
+):
+    # Uses the real DownloadVideo: it rejects the URL before touching the network.
+    response = client.post(route, json={"url": "https://vimeo.com/123"})
+
+    assert response.status_code == 400
+    assert platform in response.get_json()["error"]
+    assert not download_dir.exists()
+
+
+@pytest.mark.parametrize("route, platform, good_url", PLATFORM_ROUTES)
+def test_post_platform_when_download_fails_returns_502(
+    client, fake_downloader, route, platform, good_url
+):
+    fake_downloader.error = VideoDownloadError("ERROR: Video unavailable")
+
+    response = client.post(route, json={"url": good_url})
+
+    assert response.status_code == 502
+    assert "Video unavailable" in response.get_json()["error"]
+
+
+class FakeTranscriber:
+    model_size = None
+
+    def __init__(self, model_size):
+        FakeTranscriber.model_size = model_size
+
+    def transcribe(self, path):
+        return Transcript("en", ["Hello.", "Bye."])
+
+
+class FakeTranslator:
+    def translate(self, segments, source_language):
+        return Translation("fr", "Salut. Au revoir.")
+
+
+class FakeSummarizer:
+    def summarize(self, text):
+        return "A short greeting video."
+
+
+def test_post_youtube_with_transcription_returns_text_fields(
+    app, client, fake_downloader, monkeypatch
+):
+    app.config["TRANSCRIPTION_ENABLED"] = True
+    app.config["WHISPER_MODEL"] = "tiny"
+    monkeypatch.setattr(videos, "Transcriber", FakeTranscriber)
+    monkeypatch.setattr(videos, "Translator", FakeTranslator)
+    monkeypatch.setattr(videos, "Summarizer", FakeSummarizer)
+
+    response = client.post(
+        "/api/v1/videos/youtube", json={"url": "https://youtu.be/abc123"}
+    )
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["transcript_language"] == "en"
+    assert body["transcript_text"] == "Hello. Bye."
+    assert body["translation_language"] == "fr"
+    assert body["translation_text"] == "Salut. Au revoir."
+    assert body["topic"] == "A short greeting video."
+    assert body["warnings"] == []
+    assert FakeTranscriber.model_size == "tiny"

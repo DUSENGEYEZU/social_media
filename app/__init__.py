@@ -1,6 +1,7 @@
 from flask import Flask
 
 from app.config import Config
+from app.docs import init_docs
 
 
 def create_app(config_class: type[Config] = Config) -> Flask:
@@ -10,5 +11,6 @@ def create_app(config_class: type[Config] = Config) -> Flask:
     from app.api import api_bp
 
     app.register_blueprint(api_bp, url_prefix="/api/v1")
+    init_docs(app)
 
     return app
